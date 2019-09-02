@@ -9,6 +9,7 @@
   let input;
   let autocomplete;
   let marker2;
+  let zoomFluid, zoomCoords; //shared variables
 
   onMount(() => {
     initMap();
@@ -16,12 +17,11 @@
 
   function initMap() {
     location = new google.maps.LatLng(-33.866387, 151.208332); //qvb
-
     infowindow = new google.maps.InfoWindow();
 
     map = new google.maps.Map(document.getElementById("map"), {
       center: location,
-      zoom: 15
+      zoom: 4
     });
 
     let request = {
@@ -37,7 +37,7 @@
           createMarker(results[i]);
         }
         map.setCenter(results[0].geometry.location);
-        console.log(results);
+        // console.log(results);
       }
     });
 
@@ -47,14 +47,8 @@
     infowindowContent = document.getElementById("infowindow-content");
     infowindow.setContent(infowindowContent);
 
-    marker2 = new google.maps.Marker({
-      map: map,
-      anchorPoint: new google.maps.Point(0, -29)
-    });
-
     autocomplete.addListener("place_changed", function() {
       infowindow.close();
-      marker2.setVisible(false);
       let place = autocomplete.getPlace();
       if (!place.geometry) {
         // User entered the name of a Place that was not suggested and
@@ -63,56 +57,80 @@
         return;
       }
 
-      // If the place has a geometry, then present it on a map.
-      if (place.geometry.viewport) {
-        map.fitBounds(place.geometry.viewport);
-        console.log("mapped fitted to viewport");
-      } else {
-        map.setCenter(place.geometry.location);
-        map.setZoom(17); // Why 17? Because it looks good.
-        console.log("map centre set to "+ place.geometry.location);
-      }
-      marker2.setPosition(place.geometry.location);
-      marker2.setVisible(true);
-      console.log(place.geometry);
-      console.log("lat/lng="+place.geometry.location.lat()+"/"+place.geometry.location.lng());
+      smoothZoomOut(map, 4, map.getZoom());
 
-      var address = "";
-      if (place.address_components) {
-        address = [
-          (place.address_components[0] &&
-            place.address_components[0].short_name) ||
-            "",
-          (place.address_components[1] &&
-            place.address_components[1].short_name) ||
-            "",
-          (place.address_components[2] &&
-            place.address_components[2].short_name) ||
-            ""
-        ].join(" ");
-      } else {
-        console.log("no place.address_components");
-      }
+      // slow down creating the marker, so the zoomOut has time to finish.
+      setTimeout(function() {
+        createMarker(place);
+        map.panTo(place.geometry.location);
+      }, 2000);
+
+      // If the place has a geometry, then present it on a map.
+      // if (place.geometry.viewport) {
+      //   map.fitBounds(place.geometry.viewport);
+      //   console.log("mapped fitted to viewport");
+      // } else {
+      //   map.setCenter(place.geometry.location);
+      //   map.setZoom(17); // Why 17? Because it looks good.
+      //   console.log("map centre set to "+ place.geometry.location);
+      // }
 
       console.log(place);
 
       infowindowContent.children["place-icon"].src = place.icon;
       infowindowContent.children["place-name"].textContent = place.name;
-      infowindowContent.children["place-address"].textContent = address;
-      infowindow.open(map, marker2);
+      infowindowContent.children["place-address"].textContent = place.formatted_address;
+      // infowindow.open(map, marker2);
     });
   }
 
   function createMarker(place) {
-    var marker = new google.maps.Marker({
+    let marker = new google.maps.Marker({
       map: map,
-      position: place.geometry.location
+      title: place.name,
+      position: place.geometry.location,
+      animation: google.maps.Animation.DROP
     });
+
+    smoothZoomIn(map, 15, map.getZoom()); // call smoothZoom, parameters map, final zoomLevel, and starting zoom level
 
     google.maps.event.addListener(marker, "click", function() {
       infowindow.setContent(place.name);
       infowindow.open(map, this);
     });
+  }
+
+  // the smooth zoom function
+  function smoothZoomIn(map, max, cnt) {
+    if (cnt >= max) {
+      return;
+    } else {
+      let z = google.maps.event.addListener(map, "zoom_changed", function(
+        event
+      ) {
+        google.maps.event.removeListener(z);
+        smoothZoomIn(map, max, cnt + 1);
+      });
+      setTimeout(function() {
+        map.setZoom(cnt);
+      }, 150); // 80ms is what I found to work well on my system -- it might not work well on all systems
+    }
+  }
+
+  function smoothZoomOut(map, min, cnt) {
+    if (cnt <= min) {
+      return;
+    } else {
+      let z = google.maps.event.addListener(map, "zoom_changed", function(
+        event
+      ) {
+        google.maps.event.removeListener(z);
+        smoothZoomOut(map, min, cnt - 1);
+      });
+      setTimeout(function() {
+        map.setZoom(cnt);
+      }, 150); // 80ms is what I found to work well on my system -- it might not work well on all systems
+    }
   }
 </script>
 
@@ -148,7 +166,7 @@
   }
 
   #infowindow-content {
-    /* display: none; */
+    display: none;
   }
 </style>
 
